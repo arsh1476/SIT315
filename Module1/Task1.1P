@@ -1,0 +1,35 @@
+const int tempSensorPin = A0;  
+const int buzzerPin = 8;       
+
+float temperature = 0;         
+const float threshold = 30.0;  
+void setup() {
+
+  Serial.begin(9600);
+  pinMode(tempSensorPin, INPUT);
+  pinMode(buzzerPin, OUTPUT);
+
+  Serial.println("System Initialized. Monitoring temperature...");
+}
+
+void loop() {
+  int sensorValue = analogRead(tempSensorPin);
+  float voltage = sensorValue * (5.0 / 1023.0);
+  temperature = (voltage - 0.5) * 100.0;
+
+  // Print the temperature to the Serial Monitor
+  Serial.print("Temperature: ");
+  Serial.print(temperature);
+  Serial.println(" °C");
+
+  // Turn on the buzzer if the temperature exceeds the threshold
+  if (temperature > threshold) {
+    digitalWrite(buzzerPin, HIGH); 
+    Serial.println("Temperature exceeded threshold! Buzzer ON");
+  } else {
+    digitalWrite(buzzerPin, LOW); // Turn off the buzzer
+    Serial.println("Temperature is normal. Buzzer OFF");
+  }
+ 
+  delay(1000);
+}
