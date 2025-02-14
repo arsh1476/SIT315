@@ -1,0 +1,74 @@
+// Define pins
+const int tempSensorPin = A0;  
+const int ldrPin = A1;         
+const int buttonPin = 2;       
+const int buzzerPin = 8;       
+const int tempLedPin = 13;     
+const int lightLedPin = 12;    
+
+// Variables
+volatile bool buttonPressed = false;
+float temperature = 0;
+const float tempThreshold = 30.0;
+const int lightThreshold = 500; 
+void setup() {
+  Serial.begin(9600);
+  
+  // Configure pins
+  pinMode(tempSensorPin, INPUT);
+  pinMode(ldrPin, INPUT);
+  pinMode(buttonPin, INPUT_PULLUP);
+  pinMode(buzzerPin, OUTPUT);
+  pinMode(tempLedPin, OUTPUT);
+  pinMode(lightLedPin, OUTPUT);
+
+  // Attach interrupt for button
+  attachInterrupt(digitalPinToInterrupt(buttonPin), buttonISR, FALLING);
+
+  Serial.println("System Initialized. Monitoring sensors...");
+}
+
+void loop() {
+  // Read temperature
+  int tempSensorValue = analogRead(tempSensorPin);
+  float voltage = tempSensorValue * (5.0 / 1023.0);
+  temperature = (voltage - 0.5) * 100.0;
+
+  // Read light intensity
+  int ldrValue = analogRead(ldrPin);
+
+  // Handle button press (temperature check)
+  if (buttonPressed) {
+    if (temperature > tempThreshold) {
+      digitalWrite(tempLedPin, HIGH);
+      digitalWrite(buzzerPin, HIGH);
+      Serial.println("ALERT: High temperature! LED/Buzzer ON");
+    } else {
+      digitalWrite(tempLedPin, LOW);
+      digitalWrite(buzzerPin, LOW);
+      Serial.println("Temperature normal. LED/Buzzer OFF");
+    }
+    buttonPressed = false;
+  }
+
+  // Handle light intensity
+  if (ldrValue < lightThreshold) {
+    digitalWrite(lightLedPin, HIGH);
+    Serial.println("ALERT: Low light detected! LED ON");
+  } else {
+    digitalWrite(lightLedPin, LOW);
+    Serial.println("Light level normal. LED OFF");
+  }
+
+  
+  Serial.print("Temperature: ");
+  Serial.print(temperature);
+  Serial.print(" °C | Light Intensity: ");
+  Serial.println(ldrValue);
+  delay(1000);
+}
+
+// Interrupt Service Routine (ISR) for button
+void buttonISR() {
+  buttonPressed = true;
+}
