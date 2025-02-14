@@ -1,0 +1,59 @@
+// Define the pins
+const int tempSensorPin = A0;  
+const int buzzerPin = 8;       
+const int buttonPin = 2;       
+
+// Variables
+float temperature = 0;         
+const float threshold = 30.0;  
+volatile bool buttonPressed = false; 
+
+void setup() {
+   Serial.begin(9600);
+
+   pinMode(tempSensorPin, INPUT);
+  pinMode(buzzerPin, OUTPUT);
+  pinMode(buttonPin, INPUT_PULLUP);
+
+   attachInterrupt(digitalPinToInterrupt(buttonPin), buttonISR, FALLING);
+
+    Serial.println("System Initialized. Monitoring temperature...");
+}
+
+void loop() {
+    int sensorValue = analogRead(tempSensorPin);
+
+   float voltage = sensorValue * (5.0 / 1023.0);
+
+    temperature = (voltage - 0.5) * 100.0;
+
+
+  Serial.print("Temperature: ");
+  Serial.print(temperature);
+  Serial.println(" °C");
+
+
+  if (buttonPressed) {
+    checkTemperature(); 
+    buttonPressed = false; 
+  }
+
+ 
+  delay(1000);
+}
+
+// Interrupt Service Routine (ISR) for the button press
+void buttonISR() {
+  buttonPressed = true; 
+}
+
+// Function to check temperature and control the buzzer
+void checkTemperature() {
+  if (temperature > threshold) {
+    digitalWrite(buzzerPin, HIGH); // Turn on the buzzer
+    Serial.println("Button Pressed! Temperature exceeds threshold. Buzzer ON");
+  } else {
+    digitalWrite(buzzerPin, LOW); // Turn off the buzzer
+    Serial.println("Button Pressed! Temperature is normal. Buzzer OFF");
+  }
+}
