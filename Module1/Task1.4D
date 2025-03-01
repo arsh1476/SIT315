@@ -1,0 +1,149 @@
+#include <avr/interrupt.h>
+
+// Pin Definitions
+const int TMP36_PIN = A0;
+const int LDR_PIN   = A1;
+const int TEMP_BUTTON_PIN = 2;      // External Interrupt (INT0)
+const int PIR_SENSOR_PIN = 3;       // Motion Sensor (PCINT)
+const int TILT_SENSOR_PIN = 4;      // Tilt Sensor (PCINT)
+
+const int TEMP_ALERT_LED_PIN = 13;  // LED for high temp alert
+const int LIGHT_ALERT_LED_PIN = 12; // LED for low light alert
+const int MOTION_LED_PIN = 9;      // LED for motion detection (on for 2 sec)
+const int BUZZER_PIN = 8;           // Buzzer for tilt detection
+
+// Thresholds
+const float TEMP_THRESHOLD = 30.0;    // Temperature threshold in °C
+const int LIGHT_THRESHOLD  = 500;     // Light sensor threshold
+
+volatile bool motionDetected = false;
+volatile bool tiltDetected = false;
+volatile bool timerFlag = false;
+
+void setup() {
+  Serial.begin(9600);
+  Serial.println("System Initialized. Monitoring sensors...");
+
+  // Set sensor pins
+  pinMode(TMP36_PIN, INPUT);
+  pinMode(LDR_PIN, INPUT);
+  pinMode(PIR_SENSOR_PIN, INPUT);
+  pinMode(TILT_SENSOR_PIN, INPUT_PULLUP);
+
+  // Set actuator pins
+  pinMode(TEMP_ALERT_LED_PIN, OUTPUT);
+  pinMode(LIGHT_ALERT_LED_PIN, OUTPUT);
+  pinMode(MOTION_LED_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+
+  // Temperature check button (external interrupt)
+  pinMode(TEMP_BUTTON_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(TEMP_BUTTON_PIN), forceTemperatureCheck, FALLING);
+
+  // Enable PCINT for PIR and Tilt Sensor
+  PCICR |= (1 << PCIE2);  // Enable Pin Change Interrupts for Port D
+  PCMSK2 |= (1 << PCINT19) | (1 << PCINT20); // Enable PCINT for pins 3 (PIR) and 4 (Tilt)
+
+  // Setup Timer1 for periodic interrupts (every 5s)
+  noInterrupts();            
+  TCCR1A = 0;               
+  TCCR1B = 0;
+  TCNT1  = 0;                
+  OCR1A = 7812; // 1Hz (every 1s), 39062 for 5s interval
+  TCCR1B |= (1 << WGM12);    
+  TCCR1B |= (1 << CS12) | (1 << CS10); // 1024 prescaler
+  TIMSK1 |= (1 << OCIE1A);   
+  interrupts();              
+}
+
+void loop() {
+  // Read sensors
+  float temperature = readTemperature();
+  int lightValue = analogRead(LDR_PIN);
+
+  // Temperature Alert
+  if (temperature > TEMP_THRESHOLD) {
+    digitalWrite(TEMP_ALERT_LED_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, HIGH);
+    Serial.println("ALERT: High temperature!");
+  } else {
+    digitalWrite(TEMP_ALERT_LED_PIN, LOW);
+    digitalWrite(BUZZER_PIN, LOW);
+  }
+
+  // Light Alert
+  if (lightValue < LIGHT_THRESHOLD) {
+    digitalWrite(LIGHT_ALERT_LED_PIN, HIGH);
+    Serial.println("ALERT: Low light detected!");
+  } else {
+    digitalWrite(LIGHT_ALERT_LED_PIN, LOW);
+  }
+
+  // Handle Motion Interrupt (LED turns ON for 2 sec, then OFF)
+  if (motionDetected) {
+    digitalWrite(MOTION_LED_PIN, HIGH);
+    Serial.println("[PCINT] Motion detected! LED ON");
+    delay(2000);  // Keep LED on for 2 seconds
+    digitalWrite(MOTION_LED_PIN, LOW);
+    Serial.println("[PCINT] Motion LED OFF");
+    motionDetected = false;
+  }
+
+  // Handle Tilt Interrupt
+  if (tiltDetected) {
+    digitalWrite(BUZZER_PIN, HIGH);  // Buzzer sounds for warning
+    Serial.println("[PCINT] Tilt detected! Buzzer ON");
+    delay(1000);  // Buzzer stays on for 1s
+    digitalWrite(BUZZER_PIN, LOW);
+    tiltDetected = false;
+  }
+
+  // Periodic Data Logging
+  if (timerFlag) {
+    Serial.print("[TIMER] Temp: ");
+    Serial.print(temperature, 2);
+    Serial.print(" °C | Light: ");
+    Serial.println(lightValue);
+    timerFlag = false;
+  }
+
+  delay(500);
+}
+
+// Read TMP36 Temperature Sensor
+float readTemperature() {
+  int tempReading = analogRead(TMP36_PIN);
+  float voltage = tempReading * (5.0 / 1023.0);
+  return (voltage - 0.5) * 100.0;
+}
+
+// External Interrupt: Force Temperature Check on Button Press
+void forceTemperatureCheck() {
+  Serial.print("[Interrupt] Manual Temperature Check: ");
+  float temp = readTemperature();
+  Serial.print(temp, 2);
+  Serial.println(" °C");
+  
+  if (temp > TEMP_THRESHOLD) {
+    digitalWrite(TEMP_ALERT_LED_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, HIGH);
+  } else {
+    digitalWrite(TEMP_ALERT_LED_PIN, LOW);
+    digitalWrite(BUZZER_PIN, LOW);
+  }
+}
+
+// Pin Change Interrupt: PIR & Tilt Sensor
+ISR(PCINT2_vect) {
+  if (digitalRead(PIR_SENSOR_PIN) == HIGH) {
+    motionDetected = true;
+  }
+  if (digitalRead(TILT_SENSOR_PIN) == LOW) {  // Tilt sensor is active LOW
+    tiltDetected = true;
+  }
+}
+
+// Timer1 Interrupt: Periodic Sensor Data Logging
+ISR(TIMER1_COMPA_vect) {
+  timerFlag = true;
+}
